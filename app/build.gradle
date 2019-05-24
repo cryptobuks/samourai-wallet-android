@@ -1,21 +1,31 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 21
-    buildToolsVersion "21.1.2"
+    compileSdkVersion 26
+    buildToolsVersion '28.0.3'
+    useLibrary 'org.apache.http.legacy'
+    flavorDimensions "versionCode"
     defaultConfig {
         applicationId 'com.samourai.wallet'
         minSdkVersion 21
-        targetSdkVersion 21
-        versionCode 39
-        versionName "0.91"
+        targetSdkVersion 26
+        versionCode 146
+        versionName "0.99.41"
         // Enabling multidex support.
         multiDexEnabled true
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        applicationVariants.all { variant ->
+            variant.buildConfigField "String", "XOR_1", "\""+getApiKey("XOR_1")+"\""
+            variant.buildConfigField "String", "XOR_2", "\""+getApiKey("XOR_2")+"\""
         }
     }
     lintOptions {
@@ -36,29 +46,106 @@ android {
         exclude 'META-INF/dependencies.txt'
         exclude 'META-INF/LGPL2.1'
     }
-}
-
-dependencies {
-    compile fileTree(include: ['*.jar'], dir: 'libs')
-    compile 'com.android.support:multidex:1.0.0'
-    compile 'net.i2p.android.ext:floatingactionbutton:1.9.0'
-    compile 'org.thoughtcrime.ssl.pinning:AndroidPinning:1.0.0'
-    compile 'com.neovisionaries:nv-websocket-client:1.9'
-    compile 'com.baoyz.swipemenulistview:library:1.2.1'
-    compile 'org.apache.httpcomponents:httpclient:4.5'
-    compile 'com.googlecode.json-simple:json-simple:1.1'
-    compile 'org.json:json:20140107'
-    compile 'commons-io:commons-io:2.5'
-    compile 'commons-codec:commons-codec:1.4'
-    compile 'org.apache.commons:commons-lang3:3.3'
-    compile 'com.google.guava:guava:16.0.1'
-    compile 'org.bitcoinj:bitcoinj-core:0.14.3'
-    compile 'org.bouncycastle:bcprov-jdk15on:1.55'
-    compile 'com.madgag.spongycastle:core:1.54.0.0'
-    compile 'com.madgag.spongycastle:prov:1.54.0.0'
-    compile 'info.guardianproject.netcipher:netcipher:2.0.0-alpha1'
-    compile 'info.guardianproject.netcipher:netcipher-okhttp3:2.0.0-alpha1'
-    compile('com.google.zxing:core:3.3.0') {
-        transitive = true
+    productFlavors {
+        production {
+            applicationId 'com.samourai.wallet'
+            minSdkVersion 21
+            targetSdkVersion 26
+            versionCode 146
+            versionName "0.99.41"
+            resValue "string", "app_name", "Samourai"
+            resValue "string", "version_name", "0.99.41"
+        }
+        staging {
+            applicationId 'com.samourai.wallet.staging'
+            minSdkVersion 21
+            targetSdkVersion 26
+            versionCode 146
+            versionName "0.99.41"
+            resValue "string", "app_name", "Samourai Staging"
+            resValue "string", "version_name", "0.99.41"
+        }
+    }
+    testOptions {
+        unitTests.returnDefaultValues = true
     }
 }
+
+def getApiKey(key){
+    def Properties props = new Properties()
+    props.load(new FileInputStream(new File('samourai.api')))
+    return props[key]
+}
+
+
+dependencies {
+    def lifecycle_version = "2.0.0"
+
+    api fileTree(include: ['*.jar'], dir: 'libs')
+    implementation('com.google.zxing:core:3.3.0') {
+        transitive = true
+    }
+    implementation 'com.android.support:multidex:1.0.0'
+    implementation 'net.i2p.android.ext:floatingactionbutton:1.9.0'
+    implementation 'org.thoughtcrime.ssl.pinning:AndroidPinning:1.0.0'
+    implementation 'com.neovisionaries:nv-websocket-client:1.9'
+    implementation 'com.baoyz.swipemenulistview:library:1.2.1'
+    implementation 'commons-io:commons-io:2.5'
+    implementation 'commons-codec:commons-codec:1.4'
+    implementation 'org.apache.commons:commons-lang3:3.3'
+    implementation 'com.google.guava:guava:20.0'
+    implementation 'com.google.code.findbugs:jsr305:1.3.9'
+    implementation 'com.squareup.picasso:picasso:2.5.2'
+    implementation 'org.bouncycastle:bcprov-jdk15on:1.55'
+    implementation 'com.madgag.spongycastle:prov:1.54.0.0'
+    implementation 'com.lambdaworks:scrypt:1.4.0'
+    implementation 'info.guardianproject.netcipher:netcipher:2.0.0-alpha1'
+    implementation 'info.guardianproject.netcipher:netcipher-okhttp3:2.0.0-alpha1'
+    implementation 'com.github.mjdev:libaums:0.5.5'
+    implementation 'de.mindpipe.android:android-logging-log4j:1.0.3'
+    implementation 'com.github.magnusja:java-fs:0.1.3'
+    implementation 'com.android.support:support-v4:26.1.0'
+    implementation 'com.android.support:appcompat-v7:26.1.0'
+    implementation 'com.yanzhenjie.zbar:camera:1.0.0'
+    implementation 'com.android.support:design:26.1.0'
+    implementation 'com.android.support.constraint:constraint-layout:1.1.0'
+    implementation 'com.google.code.gson:gson:2.8.5'
+    implementation ('com.github.Samourai-Wallet:whirlpool-client:0.20.3') {
+        exclude group:'com.google.code.findbugs', module:'jsr305'
+        exclude group:'com.google.protobuf', module:'protobuf-java'
+        exclude group:'net.jcip', module:'jcip-annotations'
+        exclude group:'com.squareup.okhttp', module:'okhttp'
+        //
+        exclude group:'org.apache.commons', module:'commons-lang3'
+        exclude group:'org.json', module:'json'
+    }
+    implementation ('com.github.Samourai-Wallet:extlibj:0.0.3') {
+        exclude group:'com.google.code.findbugs', module:'jsr305'
+        exclude group:'com.google.protobuf', module:'protobuf-java'
+        exclude group:'net.jcip', module:'jcip-annotations'
+        exclude group:'com.squareup.okhttp', module:'okhttp'
+        //
+        exclude group:'org.apache.commons', module:'commons-lang3'
+        exclude group:'org.json', module:'json'
+    }
+    implementation 'com.github.Samourai-Wallet:boltzmann-java:develop-SNAPSHOT'
+    implementation 'com.github.NaikSoftware:StompProtocolAndroid:1.5.4'
+    implementation 'org.java-websocket:Java-WebSocket:1.3.6'
+    implementation 'com.android.support:recyclerview-v7:26.1.0'
+    implementation 'io.reactivex.rxjava2:rxandroid:2.1.0'
+    implementation 'io.reactivex.rxjava2:rxandroid:2.1.0'
+    implementation 'com.auth0.android:jwtdecode:1.1.1'
+    implementation 'net.sourceforge.streamsupport:streamsupport:1.6.0'
+    implementation 'com.github.clans:fab:1.6.4'
+
+
+    implementation 'com.squareup.okhttp3:okhttp:3.13.1'
+    implementation 'com.squareup.okhttp3:logging-interceptor:3.9.1'
+
+    implementation "androidx.lifecycle:lifecycle-viewmodel:$lifecycle_version"
+    implementation "androidx.lifecycle:lifecycle-livedata:$lifecycle_version"
+    implementation "android.arch.lifecycle:extensions:1.1.1"
+
+    testImplementation 'junit:junit:4.12'
+    implementation project(path: ':tor')
+ }

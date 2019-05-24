@@ -5,21 +5,26 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.os.Build;
+import android.util.Log;
 import android.widget.Toast;
 
-import com.samourai.wallet.BalanceActivity;
 import com.samourai.wallet.MainActivity2;
 import com.samourai.wallet.access.AccessFactory;
 import com.samourai.wallet.api.APIFactory;
+import com.samourai.wallet.hd.HD_Wallet;
 import com.samourai.wallet.hd.HD_WalletFactory;
 import com.samourai.wallet.payload.PayloadUtil;
 import com.samourai.wallet.prng.PRNGFixes;
 import com.samourai.wallet.R;
+import com.samourai.wallet.ricochet.RicochetMeta;
+import com.samourai.wallet.segwit.BIP49Util;
+import com.samourai.wallet.send.BlockedUTXO;
 
 import java.io.File;
-import java.io.IOException;
 import java.security.Security;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class AppUtil {
 
@@ -39,6 +44,11 @@ public class AppUtil {
 
     private static boolean PRNG_FIXES = false;
 
+    private static boolean CLIPBOARD_SEEN = false;
+
+    private static boolean isOfflineMode = false;
+    private static boolean isUserOfflineMode = false;
+
     private AppUtil() { ; }
 
 	public static AppUtil getInstance(Context ctx) {
@@ -46,39 +56,69 @@ public class AppUtil {
 		context = ctx;
 		
 		if(instance == null) {
-            if(Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-                strReceiveQRFilename = context.getCacheDir() + File.separator + "qr.png";
-                strBackupFilename = context.getCacheDir() + File.separator + "backup.asc";
-            }
-            else {
-                strReceiveQRFilename = context.getExternalCacheDir() + File.separator + "qr.png";
-                strBackupFilename = context.getCacheDir() + File.separator + "backup.asc";
-            }
+            strReceiveQRFilename = context.getExternalCacheDir() + File.separator + "qr.png";
+            strBackupFilename = context.getCacheDir() + File.separator + "backup.asc";
 			instance = new AppUtil();
 		}
 		
 		return instance;
 	}
 
-	public void wipeApp() {
+    public boolean isOfflineMode() {
+
+        isOfflineMode = (isUserOfflineMode() || !ConnectivityStatus.hasConnectivity(context)) ? true : false;
+
+        return isOfflineMode;
+    }
+
+    public void setOfflineMode(boolean offline) {
+        isOfflineMode = offline;
+    }
+
+    public boolean isUserOfflineMode() {
+        return isUserOfflineMode;
+    }
+
+    public void setUserOfflineMode(boolean offline) {
+        isUserOfflineMode = offline;
+    }
+
+    public void wipeApp() {
 
         try {
+            HD_Wallet hdw = HD_WalletFactory.getInstance(context).get();
+            String[] s = hdw.getXPUBs();
+            for(int i = 0; i < s.length; i++)   {
+//                APIFactory.getInstance(context).deleteXPUB(s[i], false);
+            }
+            String _s = BIP49Util.getInstance(context).getWallet().getAccount(0).ypubstr();
+//            APIFactory.getInstance(context).deleteXPUB(_s, true);
             PayloadUtil.getInstance(context).wipe();
         }
-        catch(IOException ioe) {
-            ioe.printStackTrace();
+        catch(Exception e) {
+            e.printStackTrace();
         }
 
         deleteBackup();
         deleteQR();
 
         final ComponentName component = new ComponentName(context.getApplicationContext().getPackageName(), "com.samourai.wallet.MainActivity");
-        context.getPackageManager().setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
-        PrefsUtil.getInstance(context).setValue(PrefsUtil.ICON_HIDDEN, false);
+        try {
+            context.getPackageManager().setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
+            PrefsUtil.getInstance(context).setValue(PrefsUtil.ICON_HIDDEN, false);
+        }
+        catch(IllegalArgumentException iae) {
+            ;
+        }
 
         APIFactory.getInstance(context).setXpubBalance(0L);
         APIFactory.getInstance(context).reset();
 		PrefsUtil.getInstance(context).clear();
+        BlockedUTXO.getInstance().clear();
+        RicochetMeta.getInstance(context).empty();
+        SendAddressUtil.getInstance().reset();
+        SentToFromBIP47Util.getInstance().reset();
+        BatchSendUtil.getInstance().clear();
         AccessFactory.getInstance(context).setIsLoggedIn(false);
 	}
 
@@ -122,12 +162,16 @@ public class AppUtil {
     }
 
     public boolean isServiceRunning(Class<?> serviceClass) {
+
         ActivityManager manager = (ActivityManager)context.getSystemService(Context.ACTIVITY_SERVICE);
         for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
             if (serviceClass.getName().equals(service.service.getClassName())) {
+                Log.d("AppUtil", "service class name:" + serviceClass.getName() + " is running");
                 return true;
             }
         }
+
+        Log.d("AppUtil", "service class name:" + serviceClass.getName() + " is not running");
         return false;
     }
 
@@ -198,6 +242,20 @@ public class AppUtil {
         else    {
             TimeOutUtil.getInstance().updatePin();
         }
+    }
+
+    public boolean isSideLoaded() {
+        List<String> validInstallers = new ArrayList<>(Arrays.asList("com.android.vending", "com.google.android.feedback"));
+        final String installer = context.getPackageManager().getInstallerPackageName(context.getPackageName());
+        return installer == null || !validInstallers.contains(installer);
+    }
+
+    public boolean isClipboardSeen() {
+        return CLIPBOARD_SEEN;
+    }
+
+    public void setClipboardSeen(boolean seen) {
+        CLIPBOARD_SEEN = seen;
     }
 
 }

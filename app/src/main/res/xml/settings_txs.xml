@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" android:key="txPrefs">
+
+    <CheckBoxPreference
+        android:title="@string/options_segwit"
+        android:summary="@string/options_segwit_2"
+        android:defaultValue="true"
+        android:key="segwit"
+        />
+
+    <CheckBoxPreference
+        android:title="@string/options_like_typed_change"
+        android:summary="@string/options_like_typed_change2"
+        android:defaultValue="true"
+        android:key="likeTypedChange"
+        />
+
+    <CheckBoxPreference
+        android:title="@string/options_rbf0"
+        android:summary="@string/options_rbf0_2"
+        android:defaultValue="false"
+        android:key="rbf"
+        />
+
+    <Preference
+        android:title="@string/options_trusted_node"
+        android:summary="@string/options_trusted_node2"
+        android:key="trustedNode"
+        />
+
+    <CheckBoxPreference
+        android:title="@string/options_use_trusted_node"
+        android:summary="@string/options_use_trusted_node2"
+        android:defaultValue="false"
+        android:key="useTrustedNode"
+        />
+
+    <Preference
+        android:title="@string/options_fee_provider"
+        android:summary="@string/options_fee_provider2"
+        android:key="feeProvider"
+        />
+
+    <CheckBoxPreference
+        android:title="@string/options_broadcast_on"
+        android:summary="@string/options_broadcast_on2"
+        android:defaultValue="true"
+        android:key="broadcastTx"
+        />
+
+    <Preference
+        android:title="@string/options_broadcast_hex"
+        android:summary="@string/options_broadcast_hex2"
+        android:key="broadcastHex"
+        />
+
+    <PreferenceCategory
+        android:key="@string/experimental"
+        android:title="@string/experimental">
+
+        <Preference
+            android:title="@string/cahoots"
+            android:summary="@string/options_cahoots2"
+            android:key="cahoots"
+            />
+
+        <Preference
+            android:title="@string/PSBT"
+            android:summary="@string/options_psbt2"
+            android:key="psbt"
+            />
+
+        <Preference
+            android:title="@string/options_whirlpool_gui"
+            android:summary="@string/options_whirlpool_gui2"
+            android:key="whirlpool_gui"
+            />
+
+    </PreferenceCategory>
+
+</PreferenceScreen>

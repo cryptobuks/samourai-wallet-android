@@ -1,15 +1,16 @@
 package com.samourai.wallet.util;
 
+import com.samourai.wallet.SamouraiWallet;
+
 public class BlockExplorerUtil {
 
-    private static CharSequence[] blockExplorers = { "Blocktrail", "Blockchain", "Blockr.io", "SoChain", "Blockexplorer.com" };
-    private static CharSequence[] blockExplorerUrls = { "https://www.blocktrail.com/BTC/tx/", "https://blockchain.info/tx/", "https://btc.blockr.io/tx/info/", "https://chain.so/tx/BTC/", "https://blockexplorer.com/tx/" };
+    private static CharSequence[] blockExplorers = { "Smartbit", "Blockchain Reader (Yogh)", "BlockCypher", "OXT" };
+    private static CharSequence[] blockExplorerTxUrls = { "https://www.smartbit.com.au/tx/", "http://srv1.yogh.io/#tx:id:", "https://live.blockcypher.com/btc/tx/", "https://m.oxt.me/transaction/" };
+    private static CharSequence[] blockExplorerAddressUrls = { "https://www.smartbit.com.au/address/", "http://srv1.yogh.io/#addr:id:", "https://live.blockcypher.com/btc/address/", "https://live.blockcypher.com/btc/address/" };
 
-    public static final int SOCHAIN = 0;
-    public static final int BLOCKTRAIL = 1;
-    public static final int BLOCKCHAIN = 2;
-    public static final int BLOCKR = 3;
-    public static final int CLASSIC = 4;
+    private static CharSequence[] tBlockExplorers = { "Smartbit", "BlockCypher" };
+    private static CharSequence[] tBlockExplorerTxUrls = { "https://testnet.smartbit.com.au/tx/", "https://live.blockcypher.com/btc-testnet/tx/" };
+    private static CharSequence[] tBlockExplorerAddressUrls = { "https://testnet.smartbit.com.au/address/", "https://live.blockcypher.com/btc-testnet/address/" };
 
     private static BlockExplorerUtil instance = null;
 
@@ -25,11 +26,36 @@ public class BlockExplorerUtil {
     }
 
     public CharSequence[] getBlockExplorers() {
-        return blockExplorers;
+
+        if(SamouraiWallet.getInstance().isTestNet())    {
+            return tBlockExplorers;
+        }
+        else    {
+            return blockExplorers;
+        }
+
     }
 
-    public CharSequence[] getBlockExplorerUrls() {
-        return blockExplorerUrls;
+    public CharSequence[] getBlockExplorerTxUrls() {
+
+        if(SamouraiWallet.getInstance().isTestNet())    {
+            return tBlockExplorerTxUrls;
+        }
+        else    {
+            return blockExplorerTxUrls;
+        }
+
+    }
+
+    public CharSequence[] getBlockExplorerAddressUrls() {
+
+        if(SamouraiWallet.getInstance().isTestNet())    {
+            return tBlockExplorerAddressUrls;
+        }
+        else    {
+            return blockExplorerAddressUrls;
+        }
+
     }
 
 }

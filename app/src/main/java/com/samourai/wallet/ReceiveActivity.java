@@ -1,7 +1,5 @@
 package com.samourai.wallet;
 
-import android.app.ActionBar;
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -15,7 +13,13 @@ import android.graphics.drawable.BitmapDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.support.constraint.ConstraintLayout;
+import android.support.transition.AutoTransition;
+import android.support.transition.TransitionManager;
+import android.support.v4.content.FileProvider;
 import android.support.v4.content.LocalBroadcastManager;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Display;
@@ -23,9 +27,13 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowManager;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -34,16 +42,19 @@ import com.google.zxing.WriterException;
 import com.google.zxing.client.android.Contents;
 import com.google.zxing.client.android.encode.QRCodeEncoder;
 import com.samourai.wallet.api.APIFactory;
+import com.samourai.wallet.hd.HD_WalletFactory;
+import com.samourai.wallet.segwit.BIP49Util;
+import com.samourai.wallet.segwit.BIP84Util;
 import com.samourai.wallet.util.AddressFactory;
 import com.samourai.wallet.util.AppUtil;
-import com.samourai.wallet.util.ExchangeRateFactory;
-import com.samourai.wallet.util.MonetaryUtil;
+import com.samourai.wallet.util.FormatsUtil;
 import com.samourai.wallet.util.PrefsUtil;
 
 import org.bitcoinj.core.Address;
 import org.bitcoinj.core.Coin;
-import org.bitcoinj.params.MainNetParams;
+import org.bitcoinj.crypto.MnemonicException;
 import org.bitcoinj.uri.BitcoinURI;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -55,30 +66,37 @@ import java.text.DecimalFormatSymbols;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.util.Locale;
+import java.util.Objects;
 
-public class ReceiveActivity extends Activity {
+public class ReceiveActivity extends AppCompatActivity {
 
-    private static Display display = null;
     private static int imgWidth = 0;
 
     private ImageView ivQR = null;
     private TextView tvAddress = null;
-    private LinearLayout addressLayout = null;
+    private TextView tvPath = null;
 
-    private EditText edAmountBTC = null;
-    private EditText edAmountFiat = null;
+    private EditText edAmountBTC, edAmountSAT = null;
     private TextWatcher textWatcherBTC = null;
-    private TextWatcher textWatcherFiat = null;
+    private LinearLayout advancedButton = null;
+    private ConstraintLayout advanceOptionsContainer = null;
+    private Spinner addressTypesSpinner = null;
+
+    private boolean useSegwit = true;
 
     private String defaultSeparator = null;
 
-    private String strFiat = null;
-    private double btc_fx = 286.0;
-    private TextView tvFiatSymbol = null;
-
     private String addr = null;
+    private String addr44 = null;
+    private String addr49 = null;
+    private String addr84 = null;
+    private int idx44 = 0;
+    private int idx49 = 0;
+    private int idx84 = 0;
 
-    private boolean canRefresh = false;
+    private boolean canRefresh44 = false;
+    private boolean canRefresh49 = false;
+    private boolean canRefresh84 = false;
     private Menu _menu = null;
 
     public static final String ACTION_INTENT = "com.samourai.wallet.ReceiveFragment.REFRESH";
@@ -87,13 +105,13 @@ public class ReceiveActivity extends Activity {
         @Override
         public void onReceive(Context context, Intent intent) {
 
-            if(ACTION_INTENT.equals(intent.getAction())) {
+            if (ACTION_INTENT.equals(intent.getAction())) {
 
                 Bundle extras = intent.getExtras();
-                if(extras != null && extras.containsKey("received_on"))	{
+                if (extras != null && extras.containsKey("received_on")) {
                     String in_addr = extras.getString("received_on");
 
-                    if(in_addr.equals(addr))    {
+                    if (in_addr.equals(addr) || in_addr.equals(addr44) || in_addr.equals(addr49)) {
                         ReceiveActivity.this.runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
@@ -112,28 +130,101 @@ public class ReceiveActivity extends Activity {
         }
     };
 
-    public ReceiveActivity() {
-        ;
-    }
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_receive);
 
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
 
-        ReceiveActivity.this.getActionBar().setNavigationMode(ActionBar.NAVIGATION_MODE_STANDARD);
+        setSupportActionBar((Toolbar) findViewById(R.id.toolbar));
+        Objects.requireNonNull(getSupportActionBar()).setDisplayHomeAsUpEnabled(true);
+        setTitle("");
 
-        display = (ReceiveActivity.this).getWindowManager().getDefaultDisplay();
+        advanceOptionsContainer = findViewById(R.id.container_advance_options);
+        tvAddress = findViewById(R.id.receive_address);
+        tvPath = findViewById(R.id.path);
+        addressTypesSpinner = findViewById(R.id.address_type_spinner);
+        ivQR = findViewById(R.id.qr);
+        advancedButton = findViewById(R.id.advance_button);
+        edAmountBTC = findViewById(R.id.amountBTC);
+        edAmountSAT = findViewById(R.id.amountSAT);
+        populateSpinner();
+
+        edAmountBTC.addTextChangedListener(BTCWatcher);
+        edAmountSAT.addTextChangedListener(satWatcher);
+
+        Display display = (ReceiveActivity.this).getWindowManager().getDefaultDisplay();
         Point size = new Point();
         display.getSize(size);
-        imgWidth = size.x - 240;
+        imgWidth = Math.max(size.x - 460, 150);
+        ivQR.setMaxWidth(imgWidth);
 
-        addr = AddressFactory.getInstance(ReceiveActivity.this).get(AddressFactory.RECEIVE_CHAIN).getAddressString();
+        useSegwit = PrefsUtil.getInstance(ReceiveActivity.this).getValue(PrefsUtil.USE_SEGWIT, true);
 
-        addressLayout = (LinearLayout)findViewById(R.id.receive_address_layout);
-        addressLayout.setOnTouchListener(new View.OnTouchListener() {
+        advancedButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                TransitionManager.beginDelayedTransition(advanceOptionsContainer, new AutoTransition());
+                int visibility = advanceOptionsContainer.getVisibility() == View.VISIBLE ? View.INVISIBLE : View.VISIBLE;
+                advanceOptionsContainer.setVisibility(visibility);
+            }
+        });
+        idx84 = BIP84Util.getInstance(ReceiveActivity.this).getWallet().getAccount(0).getChain(0).getAddrIdx();
+        idx49 = BIP49Util.getInstance(ReceiveActivity.this).getWallet().getAccount(0).getChain(0).getAddrIdx();
+        try {
+            idx44 = HD_WalletFactory.getInstance(ReceiveActivity.this).get().getAccount(0).getChain(0).getAddrIdx();
+        } catch (IOException | MnemonicException.MnemonicLengthException e) {
+            ;
+        }
+        addr84 = AddressFactory.getInstance(ReceiveActivity.this).getBIP84(AddressFactory.RECEIVE_CHAIN).getBech32AsString();
+        addr49 = AddressFactory.getInstance(ReceiveActivity.this).getBIP49(AddressFactory.RECEIVE_CHAIN).getAddressAsString();
+        addr44 = AddressFactory.getInstance(ReceiveActivity.this).get(AddressFactory.RECEIVE_CHAIN).getAddressString();
+
+        if (useSegwit && isBIP84Selected()) {
+            addr = addr84;
+        } else if (useSegwit && !isBIP84Selected()) {
+            addr = addr49;
+        } else {
+            addr = addr44;
+        }
+        addressTypesSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                switch (position) {
+                    case 0: {
+                        addr = addr49;
+                        break;
+                    }
+                    case 1: {
+                        addr = addr84;
+                        break;
+                    }
+                    case 2: {
+                        addr = addr44;
+                        break;
+                    }
+                    default: {
+                        addr = addr49;
+                    }
+                }
+                displayQRCode();
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+                ;
+            }
+        });
+
+        if (useSegwit) {
+            addressTypesSpinner.setSelection(0);
+        } else {
+            addressTypesSpinner.setSelection(2);
+        }
+
+        tvAddress.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
 
@@ -144,7 +235,7 @@ public class ReceiveActivity extends Activity {
                         .setPositiveButton(R.string.yes, new DialogInterface.OnClickListener() {
 
                             public void onClick(DialogInterface dialog, int whichButton) {
-                                android.content.ClipboardManager clipboard = (android.content.ClipboardManager)ReceiveActivity.this.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                                android.content.ClipboardManager clipboard = (android.content.ClipboardManager) ReceiveActivity.this.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
                                 android.content.ClipData clip = null;
                                 clip = android.content.ClipData.newPlainText("Receive address", addr);
                                 clipboard.setPrimaryClip(clip);
@@ -154,7 +245,6 @@ public class ReceiveActivity extends Activity {
                         }).setNegativeButton(R.string.no, new DialogInterface.OnClickListener() {
 
                     public void onClick(DialogInterface dialog, int whichButton) {
-                        ;
                     }
                 }).show();
 
@@ -162,204 +252,198 @@ public class ReceiveActivity extends Activity {
             }
         });
 
-        tvAddress = (TextView)findViewById(R.id.receive_address);
-
-        ivQR = (ImageView)findViewById(R.id.qr);
-        ivQR.setMaxWidth(imgWidth);
-
         ivQR.setOnTouchListener(new OnSwipeTouchListener(ReceiveActivity.this) {
             @Override
             public void onSwipeLeft() {
-                if(canRefresh) {
-                    addr = AddressFactory.getInstance(ReceiveActivity.this).get(AddressFactory.RECEIVE_CHAIN).getAddressString();
-                    canRefresh = false;
+                if (useSegwit && isBIP84Selected() && canRefresh84) {
+                    addr84 = AddressFactory.getInstance(ReceiveActivity.this).getBIP84(AddressFactory.RECEIVE_CHAIN).getBech32AsString();
+                    addr = addr84;
+                    canRefresh84 = false;
                     _menu.findItem(R.id.action_refresh).setVisible(false);
                     displayQRCode();
+                } else if (useSegwit && !isBIP84Selected() && canRefresh49) {
+                    addr49 = AddressFactory.getInstance(ReceiveActivity.this).getBIP49(AddressFactory.RECEIVE_CHAIN).getAddressAsString();
+                    addr = addr49;
+                    canRefresh49 = false;
+                    _menu.findItem(R.id.action_refresh).setVisible(false);
+                    displayQRCode();
+                } else if (!useSegwit && canRefresh44) {
+                    addr44 = AddressFactory.getInstance(ReceiveActivity.this).get(AddressFactory.RECEIVE_CHAIN).getAddressString();
+                    addr = addr44;
+                    canRefresh44 = false;
+                    _menu.findItem(R.id.action_refresh).setVisible(false);
+                    displayQRCode();
+                } else {
+                    ;
                 }
+
             }
-            /*
-            @Override
-            public void onSwipeRight() {
-                addr = AddressFactory.getInstance(ReceiveActivity.this).get(AddressFactory.RECEIVE_CHAIN);
-                canRefresh = false;
-                _menu.findItem(R.id.action_refresh).setVisible(false);
-                displayQRCode();
-            }
-            */
         });
 
-        DecimalFormat format = (DecimalFormat) DecimalFormat.getInstance(Locale.getDefault());
-        DecimalFormatSymbols symbols=format.getDecimalFormatSymbols();
+        DecimalFormat format = (DecimalFormat) DecimalFormat.getInstance(Locale.US);
+        DecimalFormatSymbols symbols = format.getDecimalFormatSymbols();
         defaultSeparator = Character.toString(symbols.getDecimalSeparator());
 
-        strFiat = PrefsUtil.getInstance(ReceiveActivity.this).getValue(PrefsUtil.CURRENT_FIAT, "USD");
-        btc_fx = ExchangeRateFactory.getInstance(ReceiveActivity.this).getAvgPrice(strFiat);
-        tvFiatSymbol = (TextView)findViewById(R.id.fiatSymbol);
-        tvFiatSymbol.setText(getDisplayUnits() + "-" + strFiat);
-
-        edAmountBTC = (EditText)findViewById(R.id.amountBTC);
-        edAmountFiat = (EditText)findViewById(R.id.amountFiat);
-
-        textWatcherBTC = new TextWatcher() {
-
-            public void afterTextChanged(Editable s) {
-
-                edAmountBTC.removeTextChangedListener(this);
-                edAmountFiat.removeTextChangedListener(textWatcherFiat);
-
-                int unit = PrefsUtil.getInstance(ReceiveActivity.this).getValue(PrefsUtil.BTC_UNITS, MonetaryUtil.UNIT_BTC);
-                int max_len = 8;
-                NumberFormat btcFormat = NumberFormat.getInstance(Locale.getDefault());
-                switch (unit) {
-                    case MonetaryUtil.MICRO_BTC:
-                        max_len = 2;
-                        break;
-                    case MonetaryUtil.MILLI_BTC:
-                        max_len = 4;
-                        break;
-                    default:
-                        max_len = 8;
-                        break;
-                }
-                btcFormat.setMaximumFractionDigits(max_len + 1);
-                btcFormat.setMinimumFractionDigits(0);
-
-                double d = 0.0;
-                try {
-                    d = NumberFormat.getInstance(new Locale("en", "US")).parse(s.toString()).doubleValue();
-                    String s1 = btcFormat.format(d);
-                    if (s1.indexOf(defaultSeparator) != -1) {
-                        String dec = s1.substring(s1.indexOf(defaultSeparator));
-                        if (dec.length() > 0) {
-                            dec = dec.substring(1);
-                            if (dec.length() > max_len) {
-                                edAmountBTC.setText(s1.substring(0, s1.length() - 1));
-                                edAmountBTC.setSelection(edAmountBTC.getText().length());
-                                s = edAmountBTC.getEditableText();
-                            }
-                        }
-                    }
-                } catch (NumberFormatException nfe) {
-                    ;
-                }
-                catch(ParseException pe) {
-                    ;
-                }
-
-                switch (unit) {
-                    case MonetaryUtil.MICRO_BTC:
-                        d = d / 1000000.0;
-                        break;
-                    case MonetaryUtil.MILLI_BTC:
-                        d = d / 1000.0;
-                        break;
-                    default:
-                        break;
-                }
-
-                if(d > 21000000.0)    {
-                    edAmountFiat.setText("0.00");
-                    edAmountFiat.setSelection(edAmountFiat.getText().length());
-                    edAmountBTC.setText("0");
-                    edAmountBTC.setSelection(edAmountBTC.getText().length());
-                    Toast.makeText(ReceiveActivity.this, R.string.invalid_amount, Toast.LENGTH_SHORT).show();
-                }
-                else    {
-                    edAmountFiat.setText(MonetaryUtil.getInstance().getFiatFormat(strFiat).format(d * btc_fx));
-                    edAmountFiat.setSelection(edAmountFiat.getText().length());
-                }
-
-                edAmountFiat.addTextChangedListener(textWatcherFiat);
-                edAmountBTC.addTextChangedListener(this);
-
-                displayQRCode();
-            }
-
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-                ;
-            }
-
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-                ;
-            }
-        };
-        edAmountBTC.addTextChangedListener(textWatcherBTC);
-
-        textWatcherFiat = new TextWatcher() {
-
-            public void afterTextChanged(Editable s) {
-
-                edAmountFiat.removeTextChangedListener(this);
-                edAmountBTC.removeTextChangedListener(textWatcherBTC);
-
-                int max_len = 2;
-                NumberFormat fiatFormat = NumberFormat.getInstance(Locale.getDefault());
-                fiatFormat.setMaximumFractionDigits(max_len + 1);
-                fiatFormat.setMinimumFractionDigits(0);
-
-                double d = 0.0;
-                try	{
-                    d = NumberFormat.getInstance(new Locale("en", "US")).parse(s.toString()).doubleValue();
-                    String s1 = fiatFormat.format(d);
-                    if(s1.indexOf(defaultSeparator) != -1)	{
-                        String dec = s1.substring(s1.indexOf(defaultSeparator));
-                        if(dec.length() > 0)	{
-                            dec = dec.substring(1);
-                            if(dec.length() > max_len)	{
-                                edAmountFiat.setText(s1.substring(0, s1.length() - 1));
-                                edAmountFiat.setSelection(edAmountFiat.getText().length());
-                            }
-                        }
-                    }
-                }
-                catch(NumberFormatException nfe)	{
-                    ;
-                }
-                catch(ParseException pe) {
-                    ;
-                }
-
-                int unit = PrefsUtil.getInstance(ReceiveActivity.this).getValue(PrefsUtil.BTC_UNITS, MonetaryUtil.UNIT_BTC);
-                switch (unit) {
-                    case MonetaryUtil.MICRO_BTC:
-                        d = d * 1000000.0;
-                        break;
-                    case MonetaryUtil.MILLI_BTC:
-                        d = d * 1000.0;
-                        break;
-                    default:
-                        break;
-                }
-
-                if((d / btc_fx) > 21000000.0)    {
-                    edAmountFiat.setText("0.00");
-                    edAmountFiat.setSelection(edAmountFiat.getText().length());
-                    edAmountBTC.setText("0");
-                    edAmountBTC.setSelection(edAmountBTC.getText().length());
-                    Toast.makeText(ReceiveActivity.this, R.string.invalid_amount, Toast.LENGTH_SHORT).show();
-                }
-                else    {
-                    edAmountBTC.setText(MonetaryUtil.getInstance().getBTCFormat().format(d / btc_fx));
-                    edAmountBTC.setSelection(edAmountBTC.getText().length());
-                }
-
-                edAmountBTC.addTextChangedListener(textWatcherBTC);
-                edAmountFiat.addTextChangedListener(this);
-
-                displayQRCode();
-            }
-
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-                ;
-            }
-
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-                ;
-            }
-        };
-        edAmountFiat.addTextChangedListener(textWatcherFiat);
-
         displayQRCode();
+    }
+
+
+    private Double getSatValue(Double btc) {
+        if (btc == 0) {
+            return (double) 0;
+        }
+        return btc * 100000000;
+    }
+
+
+    private String formattedSatValue(Object number) {
+        NumberFormat nformat = NumberFormat.getNumberInstance(Locale.US);
+        DecimalFormat decimalFormat = (DecimalFormat) nformat;
+        decimalFormat.applyPattern("#,###");
+        return decimalFormat.format(number).replace(",", " ");
+    }
+
+
+    private TextWatcher BTCWatcher = new TextWatcher() {
+        @Override
+        public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+        }
+
+        @Override
+        public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+        }
+
+        @Override
+        public void afterTextChanged(Editable editable) {
+            edAmountSAT.removeTextChangedListener(satWatcher);
+            edAmountBTC.removeTextChangedListener(this);
+
+            try {
+                if (editable.toString().length() == 0) {
+                    edAmountSAT.setText("0");
+                    edAmountBTC.setText("");
+                    edAmountSAT.setSelection(edAmountSAT.getText().length());
+                    edAmountSAT.addTextChangedListener(satWatcher);
+                    edAmountBTC.addTextChangedListener(this);
+                    return;
+                }
+
+                Double btc = Double.parseDouble(String.valueOf(editable));
+
+                if (btc > 21000000.0) {
+                    edAmountBTC.setText("0.00");
+                    edAmountBTC.setSelection(edAmountBTC.getText().length());
+                    edAmountSAT.setText("0");
+                    edAmountSAT.setSelection(edAmountSAT.getText().length());
+                    Toast.makeText(ReceiveActivity.this, R.string.invalid_amount, Toast.LENGTH_SHORT).show();
+                }
+                else    {
+                    DecimalFormat format = (DecimalFormat) DecimalFormat.getInstance(Locale.US);
+                    DecimalFormatSymbols symbols=format.getDecimalFormatSymbols();
+                    String defaultSeparator = Character.toString(symbols.getDecimalSeparator());
+                    int max_len = 8;
+                    NumberFormat btcFormat = NumberFormat.getInstance(Locale.US);
+                    btcFormat.setMaximumFractionDigits(max_len + 1);
+
+                    try {
+                        double d = NumberFormat.getInstance(Locale.US).parse(editable.toString()).doubleValue();
+                        String s1 = btcFormat.format(d);
+                        if (s1.indexOf(defaultSeparator) != -1) {
+                            String dec = s1.substring(s1.indexOf(defaultSeparator));
+                            if (dec.length() > 0) {
+                                dec = dec.substring(1);
+                                if (dec.length() > max_len) {
+                                    edAmountBTC.setText(s1.substring(0, s1.length() - 1));
+                                    edAmountBTC.setSelection(edAmountBTC.getText().length());
+                                    editable = edAmountBTC.getEditableText();
+                                    btc = Double.parseDouble(edAmountBTC.getText().toString());
+                                }
+                            }
+                        }
+                    } catch (NumberFormatException nfe) {
+                        ;
+                    }
+                    catch(ParseException pe) {
+                        ;
+                    }
+
+                    Double sats = getSatValue(Double.valueOf(btc));
+                    edAmountSAT.setText(formattedSatValue(sats));
+                }
+
+                //
+            } catch (NumberFormatException e) {
+                e.printStackTrace();
+            }
+            edAmountSAT.addTextChangedListener(satWatcher);
+            edAmountBTC.addTextChangedListener(this);
+
+            displayQRCode();
+        }
+    };
+
+
+    private Double getBtcValue(Double sats) {
+        return (double) (sats / 1e8);
+    }
+
+
+    private TextWatcher satWatcher = new TextWatcher() {
+        @Override
+        public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+        }
+
+        @Override
+        public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+        }
+
+        @Override
+        public void afterTextChanged(Editable editable) {
+            edAmountSAT.removeTextChangedListener(this);
+            edAmountBTC.removeTextChangedListener(BTCWatcher);
+
+            try {
+                if (editable.toString().length() == 0) {
+                    edAmountBTC.setText("0.00");
+                    edAmountSAT.setText("");
+                    edAmountSAT.addTextChangedListener(this);
+                    edAmountBTC.addTextChangedListener(BTCWatcher);
+                    return;
+                }
+                String cleared_space = editable.toString().replace(" ", "");
+
+                Double sats = Double.parseDouble(cleared_space);
+                Double btc = getBtcValue(sats);
+                String formatted = formattedSatValue(sats);
+
+
+                edAmountSAT.setText(formatted);
+                edAmountSAT.setSelection(formatted.length());
+                edAmountBTC.setText(String.format(Locale.ENGLISH, "%.8f", btc));
+                if (btc > 21000000.0) {
+                    edAmountBTC.setText("0.00");
+                    edAmountBTC.setSelection(edAmountBTC.getText().length());
+                    edAmountSAT.setText("0");
+                    edAmountSAT.setSelection(edAmountSAT.getText().length());
+                    Toast.makeText(ReceiveActivity.this, R.string.invalid_amount, Toast.LENGTH_SHORT).show();
+                }
+            } catch (NumberFormatException e) {
+                e.printStackTrace();
+
+            }
+            edAmountSAT.addTextChangedListener(this);
+            edAmountBTC.addTextChangedListener(BTCWatcher);
+            displayQRCode();
+        }
+    };
+
+
+    private void populateSpinner() {
+
+        ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(this,
+                R.array.address_types, android.R.layout.simple_spinner_item);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        addressTypesSpinner.setAdapter(adapter);
     }
 
     @Override
@@ -373,28 +457,24 @@ public class ReceiveActivity extends Activity {
 
     }
 
+    private boolean isBIP84Selected() {
+        return addressTypesSpinner.getSelectedItemPosition() == 1;
+    }
+
     @Override
     public void onPause() {
         super.onPause();
-
         LocalBroadcastManager.getInstance(ReceiveActivity.this).unregisterReceiver(receiver);
-
     }
 
     @Override
     public void onDestroy() {
-        ReceiveActivity.this.getActionBar().setNavigationMode(ActionBar.NAVIGATION_MODE_LIST);
         super.onDestroy();
     }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        getMenuInflater().inflate(R.menu.main, menu);
-        menu.findItem(R.id.action_settings).setVisible(false);
-        menu.findItem(R.id.action_sweep).setVisible(false);
-        menu.findItem(R.id.action_backup).setVisible(false);
-        menu.findItem(R.id.action_scan_qr).setVisible(false);
-        menu.findItem(R.id.action_tor).setVisible(false);
+        getMenuInflater().inflate(R.menu.receive_activity_menu, menu);
         return super.onCreateOptionsMenu(menu);
     }
 
@@ -405,121 +485,166 @@ public class ReceiveActivity extends Activity {
         // as you specify a parent activity in AndroidManifest.xml.
         int id = item.getItemId();
 
-        // noinspection SimplifiableIfStatement
-        if (id == R.id.action_share_receive) {
+        switch (id) {
+            case R.id.action_share_receive: {
+                new AlertDialog.Builder(ReceiveActivity.this)
+                        .setTitle(R.string.app_name)
+                        .setMessage(R.string.receive_address_to_share)
+                        .setCancelable(false)
+                        .setPositiveButton(R.string.yes, new DialogInterface.OnClickListener() {
 
-            new AlertDialog.Builder(ReceiveActivity.this)
-                    .setTitle(R.string.app_name)
-                    .setMessage(R.string.receive_address_to_share)
-                    .setCancelable(false)
-                    .setPositiveButton(R.string.yes, new DialogInterface.OnClickListener() {
+                            public void onClick(DialogInterface dialog, int whichButton) {
 
-                        public void onClick(DialogInterface dialog, int whichButton) {
+                                String strFileName = AppUtil.getInstance(ReceiveActivity.this).getReceiveQRFilename();
+                                File file = new File(strFileName);
+                                if (!file.exists()) {
+                                    try {
+                                        file.createNewFile();
+                                    } catch (Exception e) {
+                                        Toast.makeText(ReceiveActivity.this, e.getMessage(), Toast.LENGTH_SHORT).show();
+                                    }
+                                }
+                                file.setReadable(true, false);
 
-                            String strFileName = AppUtil.getInstance(ReceiveActivity.this).getReceiveQRFilename();
-                            File file = new File(strFileName);
-                            if(!file.exists()) {
+                                FileOutputStream fos = null;
                                 try {
-                                    file.createNewFile();
-                                }
-                                catch(Exception e) {
-                                    Toast.makeText(ReceiveActivity.this, e.getMessage(), Toast.LENGTH_SHORT).show();
-                                }
-                            }
-                            file.setReadable(true, false);
-
-                            FileOutputStream fos = null;
-                            try {
-                                fos = new FileOutputStream(file);
-                            }
-                            catch(FileNotFoundException fnfe) {
-                                ;
-                            }
-
-                            android.content.ClipboardManager clipboard = (android.content.ClipboardManager)ReceiveActivity.this.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
-                            android.content.ClipData clip = null;
-                            clip = android.content.ClipData.newPlainText("Receive address", addr);
-                            clipboard.setPrimaryClip(clip);
-
-                            if(file != null && fos != null) {
-                                Bitmap bitmap = ((BitmapDrawable)ivQR.getDrawable()).getBitmap();
-                                bitmap.compress(Bitmap.CompressFormat.PNG, 0, fos);
-
-                                try {
-                                    fos.close();
-                                }
-                                catch(IOException ioe) {
+                                    fos = new FileOutputStream(file);
+                                } catch (FileNotFoundException fnfe) {
                                     ;
                                 }
 
-                                Intent intent = new Intent();
-                                intent.setAction(Intent.ACTION_SEND);
-                                intent.setType("image/png");
-                                intent.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(file));
-                                startActivity(Intent.createChooser(intent, ReceiveActivity.this.getText(R.string.send_payment_code)));
+                                android.content.ClipboardManager clipboard = (android.content.ClipboardManager) ReceiveActivity.this.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                                android.content.ClipData clip = null;
+                                clip = android.content.ClipData.newPlainText("Receive address", addr);
+                                clipboard.setPrimaryClip(clip);
+
+                                if (file != null && fos != null) {
+                                    Bitmap bitmap = ((BitmapDrawable) ivQR.getDrawable()).getBitmap();
+                                    bitmap.compress(Bitmap.CompressFormat.PNG, 0, fos);
+
+                                    try {
+                                        fos.close();
+                                    } catch (IOException ioe) {
+                                        ;
+                                    }
+
+                                    Intent intent = new Intent();
+                                    intent.setAction(Intent.ACTION_SEND);
+                                    intent.setType("image/png");
+                                    if (android.os.Build.VERSION.SDK_INT >= 24) {
+                                        //From API 24 sending FIle on intent ,require custom file provider
+                                        intent.putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(
+                                                ReceiveActivity.this,
+                                                getApplicationContext()
+                                                        .getPackageName() + ".provider", file));
+                                    } else {
+                                        intent.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(file));
+                                    }
+                                    startActivity(Intent.createChooser(intent, ReceiveActivity.this.getText(R.string.send_payment_code)));
+                                }
+
                             }
 
-                        }
+                        }).setNegativeButton(R.string.no, new DialogInterface.OnClickListener() {
 
-                    }).setNegativeButton(R.string.no, new DialogInterface.OnClickListener() {
-
-                public void onClick(DialogInterface dialog, int whichButton) {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        ;
+                    }
+                }).show();
+                break;
+            }
+            case R.id.action_refresh: {
+                if (useSegwit && isBIP84Selected() && canRefresh84) {
+                    addr84 = AddressFactory.getInstance(ReceiveActivity.this).getBIP84(AddressFactory.RECEIVE_CHAIN).getBech32AsString();
+                    addr = addr84;
+                    canRefresh84 = false;
+                    item.setVisible(false);
+                    displayQRCode();
+                } else if (useSegwit && !isBIP84Selected() && canRefresh49) {
+                    addr49 = AddressFactory.getInstance(ReceiveActivity.this).getBIP49(AddressFactory.RECEIVE_CHAIN).getAddressAsString();
+                    addr = addr49;
+                    canRefresh49 = false;
+                    item.setVisible(false);
+                    displayQRCode();
+                } else if (!useSegwit && canRefresh44) {
+                    addr44 = AddressFactory.getInstance(ReceiveActivity.this).get(AddressFactory.RECEIVE_CHAIN).getAddressString();
+                    addr = addr44;
+                    canRefresh44 = false;
+                    item.setVisible(false);
+                    displayQRCode();
+                } else {
                     ;
                 }
-            }).show();
-
-        }
-        else if (id == R.id.action_refresh) {
-
-            if(canRefresh) {
-                addr = AddressFactory.getInstance(ReceiveActivity.this).get(AddressFactory.RECEIVE_CHAIN).getAddressString();
-                canRefresh = false;
-                item.setVisible(false);
-                displayQRCode();
+                break;
+            }
+            case R.id.action_support: {
+                doSupport();
+                break;
             }
 
+//           Handle Toolbar back button press
+            case android.R.id.home: {
+                finish();
+                break;
+            }
         }
-        else {
-            ;
-        }
+
 
         return super.onOptionsItemSelected(item);
     }
 
+    private void doSupport() {
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://support.samourai.io/section/7-receiving-bitcoin"));
+        startActivity(intent);
+    }
+
     private void displayQRCode() {
 
+        String _addr = null;
+        if (useSegwit && isBIP84Selected()) {
+            _addr = addr.toUpperCase();
+        } else {
+            _addr = addr;
+        }
+
         try {
-            double amount = NumberFormat.getInstance(new Locale("en", "US")).parse(edAmountBTC.getText().toString()).doubleValue();
+            Number amount = NumberFormat.getInstance(Locale.US).parse(edAmountBTC.getText().toString().trim());
 
-            int unit = PrefsUtil.getInstance(ReceiveActivity.this).getValue(PrefsUtil.BTC_UNITS, MonetaryUtil.UNIT_BTC);
-            switch (unit) {
-                case MonetaryUtil.MICRO_BTC:
-                    amount = amount / 1000000.0;
-                    break;
-                case MonetaryUtil.MILLI_BTC:
-                    amount = amount / 1000.0;
-                    break;
-                default:
-                    break;
+            long lamount = (long) (amount.doubleValue() * 1e8);
+            if (lamount != 0L) {
+                if (!FormatsUtil.getInstance().isValidBech32(_addr)) {
+                    ivQR.setImageBitmap(generateQRCode(BitcoinURI.convertToBitcoinURI(Address.fromBase58(SamouraiWallet.getInstance().getCurrentNetworkParams(), _addr), Coin.valueOf(lamount), null, null)));
+                } else {
+                    String strURI = "bitcoin:" + _addr;
+                    DecimalFormat df = new DecimalFormat("#");
+                    df.setMinimumIntegerDigits(1);
+                    df.setMaximumFractionDigits(8);
+                    strURI += "?amount=" + df.format(amount);
+                    ivQR.setImageBitmap(generateQRCode(strURI));
+                }
+            } else {
+                ivQR.setImageBitmap(generateQRCode(_addr));
             }
-
-            long lamount = (long)(amount * 1e8);
-            if(lamount != 0L) {
-                ivQR.setImageBitmap(generateQRCode(BitcoinURI.convertToBitcoinURI(Address.fromBase58(MainNetParams.get(), addr), Coin.valueOf(lamount), null, null)));
-            }
-            else {
-                ivQR.setImageBitmap(generateQRCode(addr));
-            }
-        }
-        catch(NumberFormatException nfe) {
-            ivQR.setImageBitmap(generateQRCode(addr));
-        }
-        catch(ParseException pe) {
-            ivQR.setImageBitmap(generateQRCode(addr));
+        } catch (NumberFormatException nfe) {
+            ivQR.setImageBitmap(generateQRCode(_addr));
+        } catch (ParseException pe) {
+            ivQR.setImageBitmap(generateQRCode(_addr));
         }
 
         tvAddress.setText(addr);
-        checkPrevUse();
+        displayPath();
+        if(!AppUtil.getInstance(ReceiveActivity.this).isOfflineMode())    {
+            checkPrevUse();
+        }
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                Intent _intent = new Intent("com.samourai.wallet.MainActivity2.RESTART_SERVICE");
+                LocalBroadcastManager.getInstance(ReceiveActivity.this).sendBroadcast(_intent);
+            }
+        }).start();
+
     }
 
     private Bitmap generateQRCode(String uri) {
@@ -551,37 +676,96 @@ public class ReceiveActivity extends Activity {
                         @Override
                         public void run() {
                             try {
-                                if(jsonObject != null) {
-                                    if(jsonObject.has("n_tx") && (jsonObject.getLong("n_tx") > 0)) {
+                                if (jsonObject != null && jsonObject.has("addresses") && jsonObject.getJSONArray("addresses").length() > 0) {
+                                    JSONArray addrs = jsonObject.getJSONArray("addresses");
+                                    JSONObject _addr = addrs.getJSONObject(0);
+                                    if (_addr.has("n_tx") && _addr.getLong("n_tx") > 0L) {
                                         Toast.makeText(ReceiveActivity.this, R.string.address_used_previously, Toast.LENGTH_SHORT).show();
-                                        canRefresh = true;
-                                        _menu.findItem(R.id.action_refresh).setVisible(true);
-                                    }
-                                    else if(AddressFactory.getInstance().canIncReceiveAddress(SamouraiWallet.SAMOURAI_ACCOUNT)) {
-                                        canRefresh = true;
-                                        _menu.findItem(R.id.action_refresh).setVisible(true);
-                                    }
-                                    else {
-                                        canRefresh = false;
-                                        _menu.findItem(R.id.action_refresh).setVisible(false);
+                                        if (useSegwit && isBIP84Selected()) {
+                                            canRefresh84 = true;
+                                        } else if (useSegwit && !isBIP84Selected()) {
+                                            canRefresh49 = true;
+                                        } else {
+                                            canRefresh44 = true;
+                                        }
+                                        if (_menu != null) {
+                                            _menu.findItem(R.id.action_refresh).setVisible(true);
+                                        }
+                                    } else {
+                                        if (useSegwit && isBIP84Selected()) {
+                                            canRefresh84 = false;
+                                        } else if (useSegwit && !isBIP84Selected()) {
+                                            canRefresh49 = false;
+                                        } else {
+                                            canRefresh44 = false;
+                                        }
+                                        if (_menu != null) {
+                                            _menu.findItem(R.id.action_refresh).setVisible(false);
+                                        }
                                     }
                                 }
 
                             } catch (Exception e) {
+                                if (useSegwit && isBIP84Selected()) {
+                                    canRefresh84 = false;
+                                } else if (useSegwit && !isBIP84Selected()) {
+                                    canRefresh49 = false;
+                                } else {
+                                    canRefresh44 = false;
+                                }
+                                if (_menu != null) {
+                                    _menu.findItem(R.id.action_refresh).setVisible(false);
+                                }
                                 e.printStackTrace();
                             }
                         }
                     });
                 } catch (Exception e) {
+                    if (useSegwit && isBIP84Selected()) {
+                        canRefresh84 = false;
+                    } else if (useSegwit && !isBIP84Selected()) {
+                        canRefresh49 = false;
+                    } else {
+                        canRefresh44 = false;
+                    }
+                    if (_menu != null) {
+                        _menu.findItem(R.id.action_refresh).setVisible(false);
+                    }
                     e.printStackTrace();
                 }
             }
         }).start();
     }
 
-    public String getDisplayUnits() {
+    private void displayPath()  {
 
-        return (String) MonetaryUtil.getInstance().getBTCUnits()[PrefsUtil.getInstance(ReceiveActivity.this).getValue(PrefsUtil.BTC_UNITS, MonetaryUtil.UNIT_BTC)];
+        int sel = addressTypesSpinner.getSelectedItemPosition();
+        String path = "m/";
+        int idx = 0 ;
+
+        switch(sel)    {
+            case 0:
+                path += "49'";
+                idx = BIP49Util.getInstance(ReceiveActivity.this).getWallet().getAccount(0).getChain(0).getAddrIdx() - 1;
+                break;
+            case 1:
+                path += "84'";
+                idx = BIP84Util.getInstance(ReceiveActivity.this).getWallet().getAccount(0).getChain(0).getAddrIdx() - 1;
+                break;
+            default:
+                path += "44'";
+                try {
+                    idx = HD_WalletFactory.getInstance(ReceiveActivity.this).get().getAccount(0).getChain(0).getAddrIdx() -1;
+                }
+                catch(IOException | MnemonicException.MnemonicLengthException e) {
+                    ;
+                }
+        }
+
+        path += "/0'/0'/0/";
+        path += idx;
+
+        tvPath.setText(path);
 
     }
 

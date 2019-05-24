@@ -1,28 +1,29 @@
 package com.samourai.wallet;
 
+import android.Manifest;
 import android.app.ActionBar;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.os.Build;
+import android.content.pm.PackageManager;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.os.Bundle;
 import android.preference.Preference;
 import android.preference.Preference.OnPreferenceClickListener;
 import android.preference.PreferenceActivity;
+import android.util.Log;
 import android.view.MenuItem;
 //import android.util.Log;
 
-import com.samourai.wallet.R;
+import com.samourai.wallet.permissions.PermissionsUtil;
 import com.samourai.wallet.util.AppUtil;
-import com.samourai.wallet.util.TimeOutUtil;
 
 public class SettingsActivity extends PreferenceActivity	{
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-
-        if(Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-            setTheme(android.R.style.Theme_Holo);
-        }
 
         super.onCreate(savedInstanceState);
         addPreferencesFromResource(R.xml.settings_root);
@@ -31,22 +32,28 @@ public class SettingsActivity extends PreferenceActivity	{
         ActionBar actionBar = getActionBar();
         actionBar.setDisplayHomeAsUpEnabled(true);
 
-        Preference prefsPref = (Preference) findPreference("prefs");
-        prefsPref.setOnPreferenceClickListener(new OnPreferenceClickListener() {
+        Preference txsPref = (Preference) findPreference("txs");
+        txsPref.setOnPreferenceClickListener(new OnPreferenceClickListener() {
             public boolean onPreferenceClick(Preference preference) {
                 Intent intent = new Intent(SettingsActivity.this, SettingsActivity2.class);
-                intent.putExtra("branch", "prefs");
+                intent.putExtra("branch", "txs");
                 startActivity(intent);
                 return true;
             }
         });
-
+/*
         Preference stealthPref = (Preference) findPreference("stealth");
         stealthPref.setOnPreferenceClickListener(new OnPreferenceClickListener() {
             public boolean onPreferenceClick(Preference preference) {
-                Intent intent = new Intent(SettingsActivity.this, SettingsActivity2.class);
-                intent.putExtra("branch", "stealth");
-                startActivity(intent);
+
+                if(!PermissionsUtil.getInstance(SettingsActivity.this).hasPermission(Manifest.permission.PROCESS_OUTGOING_CALLS)) {
+                    PermissionsUtil.getInstance(SettingsActivity.this).showRequestPermissionsInfoAlertDialog(PermissionsUtil.OUTGOING_CALL_PERMISSION_CODE);
+                }
+                else    {
+                    Intent intent = new Intent(SettingsActivity.this, SettingsActivity2.class);
+                    intent.putExtra("branch", "stealth");
+                    startActivity(intent);
+                }
                 return true;
             }
         });
@@ -58,14 +65,22 @@ public class SettingsActivity extends PreferenceActivity	{
         else    {
             remotePref.setOnPreferenceClickListener(new OnPreferenceClickListener() {
                 public boolean onPreferenceClick(Preference preference) {
-                    Intent intent = new Intent(SettingsActivity.this, SettingsActivity2.class);
-                    intent.putExtra("branch", "remote");
-                    startActivity(intent);
+                    if(!PermissionsUtil.getInstance(SettingsActivity.this).hasPermission(Manifest.permission.SEND_SMS) ||
+                            !PermissionsUtil.getInstance(SettingsActivity.this).hasPermission(Manifest.permission.RECEIVE_SMS) ||
+                            !PermissionsUtil.getInstance(SettingsActivity.this).hasPermission(Manifest.permission.READ_PHONE_STATE)
+                            ) {
+                        PermissionsUtil.getInstance(SettingsActivity.this).showRequestPermissionsInfoAlertDialog(PermissionsUtil.SMS_PERMISSION_CODE);
+                    }
+                    else    {
+                        Intent intent = new Intent(SettingsActivity.this, SettingsActivity2.class);
+                        intent.putExtra("branch", "remote");
+                        startActivity(intent);
+                    }
                     return true;
                 }
             });
         }
-
+*/
         Preference walletPref = (Preference) findPreference("wallet");
         walletPref.setOnPreferenceClickListener(new OnPreferenceClickListener() {
             public boolean onPreferenceClick(Preference preference) {
@@ -81,6 +96,16 @@ public class SettingsActivity extends PreferenceActivity	{
             public boolean onPreferenceClick(Preference preference) {
                 Intent intent = new Intent(SettingsActivity.this, SettingsActivity2.class);
                 intent.putExtra("branch", "networking");
+                startActivity(intent);
+                return true;
+            }
+        });
+
+        Preference troubleshootPref = (Preference) findPreference("troubleshoot");
+        troubleshootPref.setOnPreferenceClickListener(new OnPreferenceClickListener() {
+            public boolean onPreferenceClick(Preference preference) {
+                Intent intent = new Intent(SettingsActivity.this, SettingsActivity2.class);
+                intent.putExtra("branch", "troubleshoot");
                 startActivity(intent);
                 return true;
             }
