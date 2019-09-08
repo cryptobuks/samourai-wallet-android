@@ -12,7 +12,6 @@ import android.support.v4.content.LocalBroadcastManager;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.style.ForegroundColorSpan;
-import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -40,11 +39,10 @@ import com.samourai.wallet.send.MyTransactionOutPoint;
 import com.samourai.wallet.send.SendFactory;
 import com.samourai.wallet.send.UTXO;
 import com.samourai.wallet.util.AppUtil;
-import com.samourai.wallet.util.BlockExplorerUtil;
 import com.samourai.wallet.util.FormatsUtil;
 import com.samourai.wallet.util.MessageSignUtil;
-import com.samourai.wallet.util.PrefsUtil;
 import com.samourai.wallet.util.UTXOUtil;
+import com.samourai.wallet.whirlpool.WhirlpoolMeta;
 
 import org.bitcoinj.core.Address;
 import org.bitcoinj.core.ECKey;
@@ -55,6 +53,8 @@ import org.spongycastle.util.encoders.Hex;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
+
+import static com.samourai.wallet.util.LogUtil.debug;
 
 public class UTXOActivity extends Activity {
 
@@ -75,6 +75,8 @@ public class UTXOActivity extends Activity {
     private long totalP2WPKH = 0L;
     private long totalBlocked = 0L;
 
+    private int account = 0;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -84,6 +86,12 @@ public class UTXOActivity extends Activity {
         data = new ArrayList<DisplayData>();
         doNotSpend = new ArrayList<DisplayData>();
 
+        if (getIntent().getExtras() != null && getIntent().getExtras().containsKey("_account")) {
+            if (getIntent().getExtras().getInt("_account") == WhirlpoolMeta.getInstance(UTXOActivity.this).getWhirlpoolPostmix()) {
+                account = WhirlpoolMeta.getInstance(UTXOActivity.this).getWhirlpoolPostmix();
+            }
+        }
+
         listView = (ListView)findViewById(R.id.list);
 
         update(false);
@@ -92,8 +100,8 @@ public class UTXOActivity extends Activity {
         AdapterView.OnItemClickListener listener = new AdapterView.OnItemClickListener() {
             public void onItemClick(AdapterView<?> parent, View view, final int position, long id) {
 
-                Log.d("UTXOActivity", "menu:" + data.get(position).addr);
-                Log.d("UTXOActivity", "menu:" + data.get(position).hash + "-" + data.get(position).idx);
+                debug("UTXOActivity", "menu:" + data.get(position).addr);
+                debug("UTXOActivity", "menu:" + data.get(position).hash + "-" + data.get(position).idx);
 
                 PopupMenu menu = new PopupMenu (UTXOActivity.this, view, Gravity.RIGHT);
                 menu.setOnMenuItemClickListener (new PopupMenu.OnMenuItemClickListener ()   {
@@ -183,7 +191,34 @@ public class UTXOActivity extends Activity {
 
                                             BlockedUTXO.getInstance().remove(data.get(position).hash, data.get(position).idx);
 
-                                            Log.d("UTXOActivity", "removed:" + data.get(position).hash + "-" + data.get(position).idx);
+                                            debug("UTXOActivity", "removed:" + data.get(position).hash + "-" + data.get(position).idx);
+
+                                            update(true);
+
+                                        }
+                                    });
+                                    builder.setNegativeButton(R.string.no, new DialogInterface.OnClickListener() {
+                                        public void onClick(final DialogInterface dialog, int whichButton) {
+                                            ;
+                                        }
+                                    });
+
+                                    AlertDialog alert = builder.create();
+                                    alert.show();
+
+                                }
+                                else if(BlockedUTXO.getInstance().containsPostMix(data.get(position).hash, data.get(position).idx))    {
+
+                                    AlertDialog.Builder builder = new AlertDialog.Builder(UTXOActivity.this);
+                                    builder.setTitle(R.string.mark_spend);
+                                    builder.setMessage(R.string.mark_utxo_spend);
+                                    builder.setCancelable(true);
+                                    builder.setPositiveButton(R.string.yes, new DialogInterface.OnClickListener() {
+                                        public void onClick(final DialogInterface dialog, int whichButton) {
+
+                                            BlockedUTXO.getInstance().removePostMix(data.get(position).hash, data.get(position).idx);
+
+                                            debug("UTXOActivity", "removed:" + data.get(position).hash + "-" + data.get(position).idx);
 
                                             update(true);
 
@@ -208,9 +243,14 @@ public class UTXOActivity extends Activity {
                                     builder.setPositiveButton(R.string.yes, new DialogInterface.OnClickListener() {
                                         public void onClick(final DialogInterface dialog, int whichButton) {
 
-                                            BlockedUTXO.getInstance().add(data.get(position).hash, data.get(position).idx, data.get(position).amount);
+                                            if(account == 0)    {
+                                                BlockedUTXO.getInstance().add(data.get(position).hash, data.get(position).idx, data.get(position).amount);
+                                            }
+                                            else    {
+                                                BlockedUTXO.getInstance().addPostMix(data.get(position).hash, data.get(position).idx, data.get(position).amount);
+                                            }
 
-                                            Log.d("UTXOActivity", "added:" + data.get(position).hash + "-" + data.get(position).idx);
+                                            debug("UTXOActivity", "added:" + data.get(position).hash + "-" + data.get(position).idx);
 
                                             update(true);
 
@@ -234,7 +274,7 @@ public class UTXOActivity extends Activity {
                             case R.id.item_sign:
                             {
                                 String addr = data.get(position).addr;
-                                ECKey ecKey = SendFactory.getPrivKey(addr);
+                                ECKey ecKey = SendFactory.getPrivKey(addr, account);
                                 String msg = null;
 
                                 if(FormatsUtil.getInstance().isValidBech32(addr) || Address.fromBase58(SamouraiWallet.getInstance().getCurrentNetworkParams(), addr).isP2SHAddress())    {
@@ -276,7 +316,7 @@ public class UTXOActivity extends Activity {
                             case R.id.item_redeem:
                             {
                                 String addr = data.get(position).addr;
-                                ECKey ecKey = SendFactory.getPrivKey(addr);
+                                ECKey ecKey = SendFactory.getPrivKey(addr, account);
                                 SegwitAddress segwitAddress = new SegwitAddress(ecKey.getPubKey(), SamouraiWallet.getInstance().getCurrentNetworkParams());
 
                                 if(ecKey != null && segwitAddress != null) {
@@ -319,7 +359,7 @@ public class UTXOActivity extends Activity {
                             case R.id.item_privkey:
                             {
                                 String addr = data.get(position).addr;
-                                ECKey ecKey = SendFactory.getPrivKey(addr);
+                                ECKey ecKey = SendFactory.getPrivKey(addr, account);
                                 String strPrivKey = ecKey.getPrivateKeyAsWiF(SamouraiWallet.getInstance().getCurrentNetworkParams());
 
                                 ImageView showQR = new ImageView(UTXOActivity.this);
@@ -363,7 +403,8 @@ public class UTXOActivity extends Activity {
                 });
                 menu.inflate (R.menu.utxo_popup_menu);
 
-                if(BlockedUTXO.getInstance().contains(data.get(position).hash, data.get(position).idx))    {
+                if(BlockedUTXO.getInstance().contains(data.get(position).hash, data.get(position).idx) ||
+                        BlockedUTXO.getInstance().containsPostMix(data.get(position).hash, data.get(position).idx))    {
                     menu.getMenu().findItem(R.id.item_do_not_spend).setTitle(R.string.mark_spend);
                 }
                 else    {
@@ -425,7 +466,15 @@ public class UTXOActivity extends Activity {
         data.clear();
         doNotSpend.clear();
 
-        for(UTXO utxo : APIFactory.getInstance(UTXOActivity.this).getUtxos(false))   {
+        List<UTXO> utxos = null;
+        if(account == WhirlpoolMeta.getInstance(UTXOActivity.this).getWhirlpoolPostmix())    {
+            utxos = APIFactory.getInstance(UTXOActivity.this).getUtxosPostMix(false);
+        }
+        else    {
+            utxos = APIFactory.getInstance(UTXOActivity.this).getUtxos(false);
+        }
+
+        for(UTXO utxo : utxos)   {
             for(MyTransactionOutPoint outpoint : utxo.getOutpoints())   {
                 DisplayData displayData = new DisplayData();
                 displayData.addr = outpoint.getAddress();
@@ -434,12 +483,17 @@ public class UTXOActivity extends Activity {
                 displayData.idx = outpoint.getTxOutputN();
                 if(BlockedUTXO.getInstance().contains(outpoint.getTxHash().toString(), outpoint.getTxOutputN()))    {
                     doNotSpend.add(displayData);
-//                    Log.d("UTXOActivity", "marked as do not spend");
+//                    debug("UTXOActivity", "marked as do not spend");
+                    totalBlocked += displayData.amount;
+                }
+                else if(BlockedUTXO.getInstance().containsPostMix(outpoint.getTxHash().toString(), outpoint.getTxOutputN()))    {
+                    doNotSpend.add(displayData);
+//                    debug("UTXOActivity", "marked as do not spend");
                     totalBlocked += displayData.amount;
                 }
                 else    {
                     data.add(displayData);
-//                    Log.d("UTXOActivity", "unmarked");
+//                    debug("UTXOActivity", "unmarked");
                     if(FormatsUtil.getInstance().isValidBech32(displayData.addr))    {
                         totalP2WPKH += displayData.amount;
                     }
@@ -457,7 +511,7 @@ public class UTXOActivity extends Activity {
 
         if(adapter != null)    {
             adapter.notifyDataSetInvalidated();
-//            Log.d("UTXOActivity", "nb:" + data.size());
+//            debug("UTXOActivity", "nb:" + data.size());
         }
 
         if(broadcast)    {
@@ -513,7 +567,7 @@ public class UTXOActivity extends Activity {
             String addr = data.get(position).addr;
             text2.setText(addr);
 
-//            Log.d("UTXOActivity", "list:" + data.get(position).addr);
+//            debug("UTXOActivity", "list:" + data.get(position).addr);
 
             String descr = "";
             Spannable word = null;
@@ -521,7 +575,7 @@ public class UTXOActivity extends Activity {
                 descr += " " + UTXOUtil.getInstance().get(data.get(position).hash + "-" + data.get(position).idx);
                 word = new SpannableString(descr);
                 word.setSpan(new ForegroundColorSpan(0xFF33ff00), 1, descr.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-//                Log.d("UTXOActivity", "list: tag");
+//                debug("UTXOActivity", "list: tag");
             }
             if(isBIP47(addr))    {
                 String pcode = BIP47Meta.getInstance().getPCode4AddrLookup().get(addr);
@@ -533,25 +587,26 @@ public class UTXOActivity extends Activity {
                 }
                 word = new SpannableString(descr);
                 word.setSpan(new ForegroundColorSpan(0xFFd07de5), 1, descr.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-//                Log.d("UTXOActivity", "list: bip47");
+//                debug("UTXOActivity", "list: bip47");
             }
             if(data.get(position).amount < BlockedUTXO.BLOCKED_UTXO_THRESHOLD && BlockedUTXO.getInstance().contains(data.get(position).hash, data.get(position).idx))    {
                 descr += " " + UTXOActivity.this.getText(R.string.dust) + " " + UTXOActivity.this.getText(R.string.do_not_spend);
                 word = new SpannableString(descr);
                 word.setSpan(new ForegroundColorSpan(0xFFe75454), 1, descr.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-//                Log.d("UTXOActivity", "list: dust/do not spend");
+//                debug("UTXOActivity", "list: dust/do not spend");
             }
             else if(data.get(position).amount < BlockedUTXO.BLOCKED_UTXO_THRESHOLD && BlockedUTXO.getInstance().containsNotDusted(data.get(position).hash, data.get(position).idx))   {
                 descr += " " + UTXOActivity.this.getText(R.string.dust);
                 word = new SpannableString(descr);
                 word.setSpan(new ForegroundColorSpan(0xFF8c8c8c), 1, descr.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-//                Log.d("UTXOActivity", "list: dust");
+//                debug("UTXOActivity", "list: dust");
             }
-            else if(BlockedUTXO.getInstance().contains(data.get(position).hash, data.get(position).idx))    {
+            else if(BlockedUTXO.getInstance().contains(data.get(position).hash, data.get(position).idx) ||
+                    BlockedUTXO.getInstance().containsPostMix(data.get(position).hash, data.get(position).idx))    {
                 descr += " " + UTXOActivity.this.getText(R.string.do_not_spend);
                 word = new SpannableString(descr);
                 word.setSpan(new ForegroundColorSpan(0xFFe75454), 1, descr.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-//                Log.d("UTXOActivity", "list: do not spend");
+//                debug("UTXOActivity", "list: do not spend");
             }
             else    {
                 ;

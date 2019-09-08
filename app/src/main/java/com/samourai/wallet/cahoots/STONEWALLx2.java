@@ -1,15 +1,19 @@
 package com.samourai.wallet.cahoots;
 
+import com.samourai.wallet.SamouraiWallet;
 import com.samourai.wallet.bip69.BIP69InputComparator;
 import com.samourai.wallet.bip69.BIP69OutputComparator;
 import com.samourai.wallet.cahoots.psbt.PSBT;
 import com.samourai.wallet.segwit.SegwitAddress;
 import com.samourai.wallet.segwit.bech32.Bech32Segwit;
+import com.samourai.wallet.util.FormatsUtil;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.lang3.tuple.Triple;
 import org.bitcoinj.core.*;
 import org.bitcoinj.params.TestNet3Params;
+import org.bitcoinj.script.Script;
+import org.bitcoinj.script.ScriptBuilder;
 import org.json.JSONObject;
 import org.spongycastle.util.encoders.Hex;
 
@@ -31,7 +35,7 @@ public class STONEWALLx2 extends Cahoots {
         this.fromJSON(obj);
     }
 
-    public STONEWALLx2(long spendAmount, String address, NetworkParameters params)    {
+    public STONEWALLx2(long spendAmount, String address, NetworkParameters params, int account)    {
         this.ts = System.currentTimeMillis() / 1000L;
         this.strID = Hex.toHexString(Sha256Hash.hash(BigInteger.valueOf(new SecureRandom().nextLong()).toByteArray()));
         this.type = Cahoots.CAHOOTS_STONEWALLx2;
@@ -40,19 +44,7 @@ public class STONEWALLx2 extends Cahoots {
         this.outpoints = new HashMap<String, Long>();
         this.strDestination = address;
         this.params = params;
-    }
-
-    public STONEWALLx2(long spendAmount, String address, NetworkParameters params, String strPayNymInit, String strPayNymCollab)    {
-        this.ts = System.currentTimeMillis() / 1000L;
-        this.strID = Hex.toHexString(Sha256Hash.hash(BigInteger.valueOf(new SecureRandom().nextLong()).toByteArray()));
-        this.type = Cahoots.CAHOOTS_STONEWALLx2;
-        this.step = 0;
-        this.spendAmount = spendAmount;
-        this.outpoints = new HashMap<String, Long>();
-        this.strDestination = address;
-        this.strPayNymInit = strPayNymInit;
-        this.strPayNymCollab = strPayNymCollab;
-        this.params = params;
+        this.account = account;
     }
 
     public boolean inc(HashMap<_TransactionOutPoint, Triple<byte[],byte[],String>> inputs, HashMap<_TransactionOutput,Triple<byte[],byte[],String>> outputs, HashMap<String,ECKey> keyBag) throws Exception    {
@@ -72,6 +64,9 @@ public class STONEWALLx2 extends Cahoots {
         }
     }
 
+    //
+    // counterparty
+    //
     protected boolean doStep1(HashMap<_TransactionOutPoint,Triple<byte[],byte[],String>> inputs, HashMap<_TransactionOutput,Triple<byte[],byte[],String>> outputs) throws Exception    {
 
         if(this.getStep() != 0 || this.getSpendAmount() == 0L)   {
@@ -99,13 +94,13 @@ public class STONEWALLx2 extends Cahoots {
             psbt.addInput(PSBT.PSBT_IN_WITNESS_UTXO, null, PSBT.writeSegwitInputUTXO(outpoint.getValue().longValue(), segwitAddress.segWitRedeemScript().getProgram()));
             // input type 6
             String[] s = ((String)triple.getRight()).split("/");
-            psbt.addInput(PSBT.PSBT_IN_BIP32_DERIVATION, (byte[])triple.getLeft(), PSBT.writeBIP32Derivation((byte[])triple.getMiddle(), 84, params instanceof TestNet3Params ? 1 : 0, 0, Integer.valueOf(s[1]), Integer.valueOf(s[2])));
+            psbt.addInput(PSBT.PSBT_IN_BIP32_DERIVATION, (byte[])triple.getLeft(), PSBT.writeBIP32Derivation((byte[])triple.getMiddle(), 84, params instanceof TestNet3Params ? 1 : 0, cptyAccount, Integer.valueOf(s[1]), Integer.valueOf(s[2])));
         }
         for(_TransactionOutput output : outputs.keySet())   {
             Triple triple = outputs.get(output);
             // output type 2
             String[] s = ((String)triple.getRight()).split("/");
-            psbt.addOutput(PSBT.PSBT_OUT_BIP32_DERIVATION, (byte[])triple.getLeft(), PSBT.writeBIP32Derivation((byte[])triple.getMiddle(), 84, params instanceof TestNet3Params ? 1 : 0, 0, Integer.valueOf(s[1]), Integer.valueOf(s[2])));
+            psbt.addOutput(PSBT.PSBT_OUT_BIP32_DERIVATION, (byte[])triple.getLeft(), PSBT.writeBIP32Derivation((byte[])triple.getMiddle(), 84, params instanceof TestNet3Params ? 1 : 0, cptyAccount, Integer.valueOf(s[1]), Integer.valueOf(s[2])));
         }
 
         this.psbt = psbt;
@@ -117,6 +112,9 @@ public class STONEWALLx2 extends Cahoots {
         return true;
     }
 
+    //
+    // sender
+    //
     protected boolean doStep2(HashMap<_TransactionOutPoint,Triple<byte[],byte[],String>> inputs, HashMap<_TransactionOutput,Triple<byte[],byte[],String>> outputs) throws Exception    {
 
         Transaction transaction = psbt.getTransaction();
@@ -133,10 +131,22 @@ public class STONEWALLx2 extends Cahoots {
             transaction.addOutput(output);
         }
 
-        Pair<Byte, byte[]> pair = Bech32Segwit.decode(params instanceof TestNet3Params ? "tb" : "bc", strDestination);
-        byte[] scriptPubKey = Bech32Segwit.getScriptPubkey(pair.getLeft(), pair.getRight());
-        TransactionOutput _output = new TransactionOutput(params, null, Coin.valueOf(spendAmount), scriptPubKey);
-        transaction.addOutput(_output);
+        TransactionOutput _output = null;
+        if(FormatsUtil.getInstance().isValidBitcoinAddress(strDestination))    {
+            if(FormatsUtil.getInstance().isValidBech32(strDestination))    {
+                Pair<Byte, byte[]> pair = Bech32Segwit.decode(params instanceof TestNet3Params ? "tb" : "bc", strDestination);
+                byte[] scriptPubKey = Bech32Segwit.getScriptPubkey(pair.getLeft(), pair.getRight());
+                _output = new TransactionOutput(params, null, Coin.valueOf(spendAmount), scriptPubKey);
+            }
+            else    {
+                Script toOutputScript = ScriptBuilder.createOutputScript(org.bitcoinj.core.Address.fromBase58(SamouraiWallet.getInstance().getCurrentNetworkParams(), strDestination));
+                _output = new TransactionOutput(SamouraiWallet.getInstance().getCurrentNetworkParams(), null, Coin.valueOf(spendAmount), toOutputScript.getProgram());
+            }
+            transaction.addOutput(_output);
+        }
+        else    {
+            return false;
+        }
 
         for(_TransactionOutPoint outpoint : inputs.keySet())   {
             Triple triple = inputs.get(outpoint);
@@ -145,13 +155,13 @@ public class STONEWALLx2 extends Cahoots {
             psbt.addInput(PSBT.PSBT_IN_WITNESS_UTXO, null, PSBT.writeSegwitInputUTXO(outpoint.getValue().longValue(), segwitAddress.segWitRedeemScript().getProgram()));
             // input type 6
             String[] s = ((String)triple.getRight()).split("/");
-            psbt.addInput(PSBT.PSBT_IN_BIP32_DERIVATION, (byte[])triple.getLeft(), PSBT.writeBIP32Derivation((byte[])triple.getMiddle(), 84, params instanceof TestNet3Params ? 1 : 0, 0, Integer.valueOf(s[1]), Integer.valueOf(s[2])));
+            psbt.addInput(PSBT.PSBT_IN_BIP32_DERIVATION, (byte[])triple.getLeft(), PSBT.writeBIP32Derivation((byte[])triple.getMiddle(), 84, params instanceof TestNet3Params ? 1 : 0, account, Integer.valueOf(s[1]), Integer.valueOf(s[2])));
         }
         for(_TransactionOutput output : outputs.keySet())   {
             Triple triple = outputs.get(output);
             // output type 2
             String[] s = ((String)triple.getRight()).split("/");
-            psbt.addOutput(PSBT.PSBT_OUT_BIP32_DERIVATION, (byte[])triple.getLeft(), PSBT.writeBIP32Derivation((byte[])triple.getMiddle(), 84, params instanceof TestNet3Params ? 1 : 0, 0, Integer.valueOf(s[1]), Integer.valueOf(s[2])));
+            psbt.addOutput(PSBT.PSBT_OUT_BIP32_DERIVATION, (byte[])triple.getLeft(), PSBT.writeBIP32Derivation((byte[])triple.getMiddle(), 84, params instanceof TestNet3Params ? 1 : 0, account, Integer.valueOf(s[1]), Integer.valueOf(s[2])));
         }
 
         psbt.setTransaction(transaction);
@@ -161,6 +171,9 @@ public class STONEWALLx2 extends Cahoots {
         return true;
     }
 
+    //
+    // counterparty
+    //
     protected boolean doStep3(HashMap<String,ECKey> keyBag)    {
 
         Transaction transaction = this.getTransaction();
@@ -188,6 +201,9 @@ public class STONEWALLx2 extends Cahoots {
         return true;
     }
 
+    //
+    // sender
+    //
     protected boolean doStep4(HashMap<String,ECKey> keyBag)    {
 
         signTx(keyBag);

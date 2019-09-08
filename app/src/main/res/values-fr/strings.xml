@@ -678,4 +678,101 @@
     <string name="cannot_process_cahoots">Traitement #Cahoots impossible</string>
     
     
+    
+    
+    <string name="title_activity_network_dashboard">Mise en réseau</string>
+    
+    <string name="powering_samourai_wallet_">En faisant fonctionner votre portefeuille Samourai avec votre propre noeud (node) personnel, vous optimisez votre niveau de confidentialité et d\'indépendance  pendant vos activités sur le réseau Bitcoin. Dojo simplifie et facilite l\'utilisation d\'un noeud complet.</string>
+    <string name="plug_and_play_full_bitcoin_node_automatically">- Installation Plug and Play du noeud\n\n Bitcoin complet -Service\n\n caché Tor automatiquement configuré -Indépendance par défaut des serveurs Samourai</string>
+    <string name="dojo_connect_instruction">Si vous disposez déjà d\'un noeud Dojo complet ou si vous\nutilisez le logiciel Dojo open source et gratuit\nsur votre propre hardware, scannez le code QR d\'appairage\nsitué  sur la Maintenance du panneau de configuration du Dojo</string>
+    <string name="dojo_headline">Faîtes fonctionner Samourai avec votre propre noeud complet DOJO personnel</string>
+    <string name="connect_to_existing_dojo">Connectez-vous au Dojo existant</string>
+    <string name="preorder">pré-commande</string>
+    
+    <string name="is_offline">Samourai est hors-ligne</string>
+    <string name="history_will_be_updated">Solde et Historique des transactions ne sont mis à jour qu\'une fois établie une connection de données active</string>
+    
+    <string name="options_whirlpool_gui">Appairer avec Whirlpool GUI</string>
+    <string name="options_whirlpool_gui2">Appairer avec Whirlpool GUI pour un mixage en continu.</string>
+    <string name="cannot_pair_whirlpool_gui">Préparation à l\'appairage avec Whirlpool GUI impossible.</string>
+    
+    <string name="address">Adresse</string>
+    <string name="syncing_pcodes">Synchronisation des codes de paiement</string>
+    <string name="sync_complete">Synchronisation du code de paiement terminée</string>
+    <string name="options_paynym_indexes">Afficher répertoires PayNym</string>
+    
+    
+    <string name="options_xpub84_premix">Afficher Whirlpool pré-mix ZPUB</string>
+    <string name="options_xpub84_premix2">Afficher clé publique étendue pour compte Segwit BIP84 (Bech32) Whirlpool pré-mix.</string>
+    <string name="options_xpub84_postmix">Afficher Whirlpool post-mix ZPUB</string>
+    <string name="options_xpub84_postmix2">Afficher clé publique étendue pour compte Segwit BIP84 (Bech32) Whirlpool post-mix.</string>
+    <string name="create_password">Créer mot de passe</string>
+    <string name="confirm_password">Confirmer mot de passe</string>
+    <string name="pairing_password">Définir appairage mot de passe: (6-255 caractères)</string>
+    <string name="password_error">Erreur création mot de passe</string>
+    <string name="password_invalid">Mot de passe invalide</string>
+
+    <string name="review_whirlpool">Vérifier Détails Whirlpool</string>
+    <string name="total_selected">Total sélectionné</string>
+    <string name="cycle">Cycle</string>
+    
+    <string name="options_postmix">Dépenser à partir de Whirlpool post-mix</string>
+    
+    <string name="postmix_without_boltzmann">Veuillez noter qu\'une dépense à partir de votre compte post-mix sans l\'utilisation de STONEWALL aura pour conséquence la perte de la confidentialité acquise à travers Whirlpool.</string>
+    
+    
+    
+    
+    <string name="begin_cycle">DÉMARRER CYCLE</string>
+    <string name="pool_fee">FRAIS POOL</string>
+    <string name="total_fees">TOTAL FRAIS</string>
+    <string name="miner_fee">FRAIS MINEUR</string>
+    <string name="total_being_cycled">Total post-cycle(s):</string>
+    <string name="review_cycle_details">VÉRIFIER DÉTAILS CYCLE</string>
+    <string name="cycled_transactions">Transactions post-cycle(s)</string>
+    <string name="initial_transaction">Transaction Initiale</string>
+    <string name="progress">Progression</string>
+    <string name="waiting_for_blockchain_confirmation">En attente d\'une confirmation blockchain</string>
+    
+    <string name="estimated_entropy">Entropie Estimée</string>
+    <string name="share_this_qr_code_with_your_participant">Partager ce code QR avec votre participant</string>
+    <string name="review_tx_before_braodcast">Vérifier la transaction avant émission</string>
+    <string name="select_participant">Sélectionner participant</string>
+    <string name="select_cahoots_type">Sélectionner type de cahoots</string>
+
+    <string name="create_to_existing_dojo">Créer portefeuille et appairer avec Dojo</string>
+
+    <string name="cannot_disable_tor_dojo">Tor ne peut être arrêté car le portefeuille est connecté à un noeud Dojo Samourai.</string>
+
+    <string name="temporary_dojo_disable">Désinstaller le Portefeuille Samourai pour désappairage de votre noeud Dojo. \'DÉSACTIVER\' sera entièrement activé lors d\'une prochaine mise à jour.</string>
+
+
+    <string name="renew">ACTUALISER</string>
+    
+    
+    <string name="continue_exchanging_qr_codes">Poursuivez l\'échange de codes\n QR jusqu\'à l\'émission de la transaction!</string>
+    <string name="confirm_that_you_wish_to_broadcast_this_transaction">Confirmez votre souhait d\'émettre cette transaction.</string>
+    
+    
+    <string name="begin_stowaway">Démarrer Stowaway</string>
+    <string name="begin_stonewallx2">Démarrer STONEWALLx2</string>
+
+    <string name="you_will_pay">Vous règlerez :</string>
+    <string name="total_miner_fee">Total Frais Mineur:</string>
+    <string name="launch_qr_scanner">LANCER Scanner QR</string>
+    <string name="next_step">Prochaine Étape...</string>
+    <string name="scan_the_qr_code_that_your_collaborator_provides_you">Scannez le CODE QR que votre collaborateur vous fournit.</string>
+    
+    <string name="you_will_contribute">Votre contribution</string>
+
+    <string name="create_an_on_demand_coinjoin_transaction_for_enhanced_privacy_and_surveillance_protection">Créer une transaction CoinJoin à la demande pour une confidentialité et une surveillance renforcées</string>
+
+    <string name="refresh">Actualiser</string>
+    <string name="unspent_outputs">Sorties non dépensées</string>
+    <string name="unspent_outputs_post_mix">Sorties non dépensées - Post mix</string>
+    
+    <string name="paste_cahoots_payload">Copier/Coller charge utile cahoots</string>
+
+    
+    
 </resources>
